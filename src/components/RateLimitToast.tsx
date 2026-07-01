@@ -5,19 +5,26 @@ const SHOW_MS = 5000;
 
 export function RateLimitToast() {
   const [msg, setMsg] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearTimer() {
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }
 
   useEffect(() => {
     function onLimit(e: Event) {
       const detail = (e as CustomEvent<string>).detail;
       setMsg(detail || "You're being rate limited. Slow down a moment.");
-      clearTimeout(timer.current);
+      clearTimer();
       timer.current = setTimeout(() => setMsg(null), SHOW_MS);
     }
     window.addEventListener(RATE_LIMIT_EVENT, onLimit);
     return () => {
       window.removeEventListener(RATE_LIMIT_EVENT, onLimit);
-      clearTimeout(timer.current);
+      clearTimer();
     };
   }, []);
 
