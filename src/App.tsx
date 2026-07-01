@@ -96,7 +96,7 @@ export function App({ username, onHandleSubmit }: AppProps) {
           </div>
         ) : user.data ? (
           <>
-            <ProfileHeader user={user.data} communities={communities} />
+            <ProfileHeader user={user.data} />
 
             <KpiTiles user={user.data} communities={communities} />
 
