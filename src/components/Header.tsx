@@ -7,12 +7,13 @@ interface Props {
   onSubmit: (kind: RedditKind, value: string) => void;
   onRescan: () => void;
   syncing: boolean;
+  sourceLabel?: string;
 }
 
 const prefixFor = (kind: RedditKind) => (kind === "subreddit" ? "r/" : "u/");
 const kindFor = (prefix: string): RedditKind => (prefix === "r/" ? "subreddit" : "user");
 
-export function Header({ kind, handle, onSubmit, onRescan, syncing }: Props) {
+export function Header({ kind, handle, onSubmit, onRescan, syncing, sourceLabel = "arctic-shift" }: Props) {
   const [draft, setDraft] = useState(handle);
   const [prefix, setPrefix] = useState(prefixFor(kind));
 
@@ -56,7 +57,7 @@ export function Header({ kind, handle, onSubmit, onRescan, syncing }: Props) {
         <span
           className="ml-0.5 rounded-md border border-white/10 px-[7px] py-0.5 text-[11px] font-medium text-subtle"
         >
-          arctic-shift
+          {sourceLabel}
         </span>
       </div>
 

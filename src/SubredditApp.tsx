@@ -48,6 +48,11 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
   const wikis = useSubredditWikis(subreddit);
   const topPosts = useSubredditTopPosts(subreddit, postWindow);
   const contributors = useSubredditContributors(subreddit);
+  const hasLiveSnapshot = sub.data?._sources?.snapshot === "reddit-live";
+  const sourceLabel = hasLiveSnapshot ? "reddit live + arctic" : "arctic-shift";
+  const footerSource = hasLiveSnapshot
+    ? "live stats via public reddit data · archive via arctic-shift.photon-reddit.com"
+    : "archive via arctic-shift.photon-reddit.com";
   const syncing =
     sub.isFetching ||
     activity.isFetching ||
@@ -70,6 +75,7 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
         onSubmit={onHandleSubmit}
         onRescan={handleRescan}
         syncing={syncing}
+        sourceLabel={sourceLabel}
       />
 
       <main className="relative mx-auto flex max-w-[1340px] flex-col gap-3.5 px-4 pb-[60px] pt-[22px] sm:px-[26px]">
@@ -104,7 +110,7 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
               />
               <div className="ks-card min-w-0 flex-[1_1_260px]">
                 <span className="ks-label">Top contributors</span>
-                <div className="ks-endpoint">/api/posts/search · client aggregate</div>
+                <div className="ks-endpoint">Arctic /api/posts/search · client aggregate</div>
                 {contributors.isLoading || contributors.error ? (
                   <BarListSkeleton rows={8} />
                 ) : contributors.data?.length ? (
@@ -132,7 +138,7 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
         ) : null}
 
         <div className="pt-1.5 text-center font-mono text-[11px] text-faint">
-          karmascope · data via arctic-shift.photon-reddit.com · live data · not affiliated with reddit
+          karmascope · {footerSource} · not affiliated with reddit
         </div>
       </main>
     </div>
@@ -285,30 +291,41 @@ function SubredditKpis({
   wikiCount: number | undefined;
   authorCount: number | undefined;
 }) {
+  const subscriberSource =
+    subreddit._sources?.subscribers === "reddit-live"
+      ? "Reddit live snapshot"
+      : "Arctic archived snapshot";
+  const activeCount = subreddit.active_user_count ?? subreddit.accounts_active;
   const tiles: Tile[] = [
     {
       label: "Subscribers",
       field: "subscribers",
       value: num(subreddit.subscribers),
-      sub: "latest archived subreddit snapshot",
+      sub: subscriberSource,
+    },
+    {
+      label: "Active users",
+      field: "active_user_count",
+      value: num(activeCount),
+      sub: activeCount == null ? "not available from live source" : "Reddit live snapshot",
     },
     {
       label: "Posts archived",
       field: "num_posts",
       value: num(subreddit._meta.num_posts),
-      sub: "all submissions on record",
+      sub: subreddit._sources?.archive === "arctic" ? "all submissions on Arctic record" : "archive unavailable",
     },
     {
       label: "Comments archived",
       field: "num_comments",
       value: num(subreddit._meta.num_comments),
-      sub: "all comments on record",
+      sub: subreddit._sources?.archive === "arctic" ? "all comments on Arctic record" : "archive unavailable",
     },
     {
       label: "Recent authors",
       field: "authors / sample",
       value: authorCount == null ? "..." : num(authorCount),
-      sub: `${wikiCount == null ? "..." : num(wikiCount)} wiki pages indexed`,
+      sub: `${wikiCount == null ? "..." : num(wikiCount)} Arctic wiki pages indexed`,
     },
   ];
 
@@ -359,7 +376,7 @@ function SubredditActivityChart({
           {metric.toLowerCase()} / month · {range}
         </span>
       </div>
-      <div className="ks-endpoint mb-3 mt-0">/api/time_series · key=r/subreddit</div>
+      <div className="ks-endpoint mb-3 mt-0">Arctic /api/time_series · key=r/subreddit</div>
       {body}
     </div>
   );
@@ -375,7 +392,7 @@ function WikiGrid({ wikis, isLoading }: { wikis: WikiPage[] | undefined; isLoadi
         <span className="ks-label">Wiki pages and paths</span>
         <span className="font-mono text-[11px] text-dim">{wikis?.length ?? "..."} pages</span>
       </div>
-      <div className="ks-endpoint">/api/subreddits/wikis/list</div>
+      <div className="ks-endpoint">Arctic /api/subreddits/wikis/list</div>
       {isLoading ? (
         <RowsSkeleton rows={8} />
       ) : wikis?.length ? (
@@ -422,7 +439,7 @@ function ContentSplit({ subreddit }: { subreddit: SubredditRecord }) {
   return (
     <div className="ks-card min-w-0 flex-[1_1_240px]">
       <span className="ks-label">Content split</span>
-      <div className="ks-endpoint">/api/subreddits/search · _meta</div>
+      <div className="ks-endpoint">Arctic /api/subreddits/search · _meta</div>
       <div className="mt-4 flex h-[9px] overflow-hidden rounded-[5px]">
         <div style={{ width: `${postsPct}%` }} className="bg-accent" />
         <div style={{ width: `${commentsPct}%` }} className="bg-comment" />
@@ -486,7 +503,7 @@ function TopPosts({
           <span className="font-mono text-xs text-dim">rank=score · {windowLabel}</span>
         </div>
       </div>
-      <div className="ks-endpoint">/api/posts/search · subreddit={subreddit}</div>
+      <div className="ks-endpoint">Arctic /api/posts/search · subreddit={subreddit}</div>
       {isLoading || error ? (
         <RowsSkeleton rows={6} />
       ) : posts?.length ? (
