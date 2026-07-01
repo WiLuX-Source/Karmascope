@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Header } from "./components/Header";
 import { RateLimitToast } from "./components/RateLimitToast";
@@ -197,49 +197,96 @@ function SubredditHeader({ subreddit }: { subreddit: SubredditRecord }) {
   const created = subreddit.created_utc || Math.min(subreddit._meta.earliest_post, subreddit._meta.earliest_comment);
   const description = subreddit.public_description || subreddit.title || "No public description archived.";
   const redditUrl = `https://www.reddit.com/r/${subreddit.display_name}`;
+  const bannerImage = [
+    mediaUrl(subreddit.banner_background_image),
+    mediaUrl(subreddit.banner_img),
+    mediaUrl(subreddit.mobile_banner_image),
+  ].find(Boolean);
+  const mobileBannerImage = mediaUrl(subreddit.mobile_banner_image) ?? bannerImage;
+  const bannerColor = hexColor(subreddit.banner_background_color, subreddit.primary_color, subreddit.key_color) ?? "#141418";
+  const accentColor = hexColor(subreddit.key_color, subreddit.primary_color, subreddit.banner_background_color) ?? "#ff4500";
+  const bannerStyle: CSSProperties = {
+    background: `radial-gradient(circle at 18% 18%, ${accentColor}55, transparent 34%), linear-gradient(135deg, ${bannerColor}, #101014 72%)`,
+  };
 
   return (
-    <div className="flex flex-wrap items-center gap-[22px] rounded-2xl border-4 border-double border-border bg-[image:var(--card-bg)] px-6 py-5">
-      <a
-        href={redditUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        title={`Open r/${subreddit.display_name} on reddit`}
-        className="relative block h-[62px] w-[62px] flex-none cursor-pointer"
-      >
-        <div className="absolute -inset-[3px] rounded-full bg-ring opacity-90" />
-        <SubredditLogo subreddit={subreddit} />
-      </a>
-      <div className="min-w-[220px] flex-1">
-        <div className="flex flex-wrap items-center gap-2.5">
+    <div className="relative overflow-hidden rounded-2xl border border-border bg-[#101014] shadow-[0_22px_70px_rgb(0_0_0_/_0.28)]">
+      <div className="absolute inset-0" style={bannerStyle} />
+      {bannerImage ? (
+        <picture className="absolute inset-0 block">
+          {mobileBannerImage ? <source media="(max-width: 640px)" srcSet={mobileBannerImage} /> : null}
+          <img
+            src={bannerImage}
+            alt=""
+            aria-hidden="true"
+            className="h-full w-full object-cover opacity-75 saturate-[1.08]"
+          />
+        </picture>
+      ) : null}
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgb(0_0_0_/_0.10),rgb(0_0_0_/_0.52)_48%,rgb(0_0_0_/_0.86)),linear-gradient(90deg,rgb(0_0_0_/_0.72),rgb(0_0_0_/_0.22)_58%,rgb(0_0_0_/_0.48))]" />
+      <div className="relative flex min-h-[230px] flex-col justify-end gap-5 px-5 pb-5 pt-20 [text-shadow:0_1px_18px_rgb(0_0_0_/_0.75)] sm:min-h-[246px] sm:px-6 sm:py-6">
+        <div className="flex flex-wrap items-end gap-4 sm:gap-[22px]">
           <a
             href={redditUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="cursor-pointer text-[22px] font-semibold tracking-normal text-inherit no-underline hover:text-accent"
+            title={`Open r/${subreddit.display_name} on reddit`}
+            className="relative block h-[72px] w-[72px] flex-none cursor-pointer sm:h-[82px] sm:w-[82px]"
           >
-            r/{subreddit.display_name}
+            <div
+              className="absolute -inset-[3px] rounded-full opacity-95"
+              style={{ background: `conic-gradient(from 220deg, ${accentColor}, ${accentColor}88, ${accentColor})` }}
+            />
+            <SubredditLogo subreddit={subreddit} />
           </a>
-          <span
-            className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
-              subreddit.over18
-                ? "border-[rgb(255_122_110_/_0.25)] bg-[rgb(255_122_110_/_0.08)] text-[#ff7a6e]"
-                : "border-[rgb(61_220_151_/_0.22)] bg-[rgb(61_220_151_/_0.12)] text-[#3ddc97]"
-            }`}
-          >
-            {subreddit.over18 ? "NSFW" : "SFW"}
-          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <a
+                href={redditUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="cursor-pointer break-words text-[24px] font-semibold leading-tight tracking-normal text-white no-underline hover:text-accent sm:text-[30px]"
+              >
+                r/{subreddit.display_name}
+              </a>
+              <span
+                className={`rounded-md border px-2 py-0.5 text-[11px] font-medium backdrop-blur ${
+                  subreddit.over18
+                    ? "border-[rgb(255_122_110_/_0.34)] bg-[rgb(255_122_110_/_0.16)] text-[#ff948b]"
+                    : "border-[rgb(61_220_151_/_0.32)] bg-[rgb(61_220_151_/_0.16)] text-[#64ecb3]"
+                }`}
+              >
+                {subreddit.over18 ? "NSFW" : "SFW"}
+              </span>
+            </div>
+            <div className="mt-2 max-w-[760px] text-[13px] leading-relaxed text-white/[0.82] sm:text-[14px]">{description}</div>
+          </div>
+          <div className="flex flex-wrap gap-[18px] rounded-xl border border-white/10 bg-black/[0.35] px-3.5 py-3 backdrop-blur-md sm:ml-auto sm:gap-[24px]">
+            <Stat label="Created" value={shortDate(created)} />
+          </div>
         </div>
-        <div className="mt-1.5 max-w-[720px] text-[13px] leading-normal text-muted-3">{description}</div>
-      </div>
-      <div className="ml-auto flex flex-wrap gap-[26px]">
-        <Stat label="Created" value={shortDate(created)} />
+        {subreddit.title && subreddit.title !== description ? (
+          <div className="max-w-[760px] truncate border-l-2 border-white/20 pl-3 text-[12px] text-white/[0.62]">
+            {subreddit.title}
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function mediaUrl(value: string | undefined) {
+function hexColor(...values: Array<string | undefined>) {
+  for (const value of values) {
+    const color = value?.trim();
+    if (!color || !/^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color)) continue;
+    if (color.length === 4) {
+      return `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`;
+    }
+    return color.slice(0, 7);
+  }
+}
+
+function mediaUrl(value: string | null | undefined) {
   const url = value?.replace(/&amp;/g, "&").trim();
   return url || undefined;
 }
@@ -255,8 +302,8 @@ function SubredditLogo({ subreddit }: { subreddit: SubredditRecord }) {
         <img
           src={src}
           alt={`r/${subreddit.display_name} logo`}
-          width={62}
-          height={62}
+          width={82}
+          height={82}
           onError={() => setSrcIndex((i) => i + 1)}
           className="block h-full w-full object-cover"
         />
