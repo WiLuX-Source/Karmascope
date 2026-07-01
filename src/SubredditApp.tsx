@@ -362,10 +362,21 @@ function SubredditActivityChart({
   const n = SUBREDDIT_RANGE_MONTHS[range];
   const shownMonths = (months ?? []).slice(-n);
   const series = (values ?? []).slice(-n);
+  const showExactValues = metric === "Subscribers";
 
   let body;
   if (isLoading || error) body = <ChartSkeleton />;
-  else body = <TimeSeriesAreaChart months={shownMonths} values={series} metricLabel={metric} />;
+  else {
+    body = (
+      <TimeSeriesAreaChart
+        months={shownMonths}
+        values={series}
+        metricLabel={metric}
+        valueFormatter={showExactValues ? num : undefined}
+        yAxisWidth={showExactValues ? 78 : undefined}
+      />
+    );
+  }
 
   return (
     <div className="ks-card flex min-w-0 flex-[1.9_1_380px] flex-col">
