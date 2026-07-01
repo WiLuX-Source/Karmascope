@@ -157,7 +157,7 @@ export function App({ username, onHandleSubmit }: AppProps) {
         ) : null}
 
         <div className="pt-1.5 text-center font-mono text-[11px] text-faint">
-          karmascope · data via arctic-shift.photon-reddit.com · live data · not affiliated with reddit
+          karmascope · archive via arctic-shift.photon-reddit.com · live user view via ghostddit.pages.dev · not affiliated with reddit
         </div>
       </main>
     </div>

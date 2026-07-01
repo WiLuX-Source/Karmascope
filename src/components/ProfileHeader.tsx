@@ -1,5 +1,6 @@
 import type { UserRecord } from "../api/arctic";
 import { useState } from "react";
+import { ghostdditUserUrl } from "../api/ghostddit";
 import { avatarUrl, initials, shortDate, relTime } from "../lib/format";
 
 interface Props {
@@ -23,6 +24,7 @@ export function ProfileHeader({ user }: Props) {
   const firstSeen = Math.min(m.earliest_post_at, m.earliest_comment_at);
   const lastActive = Math.max(m.last_post_at, m.last_comment_at);
   const profileUrl = `https://www.reddit.com/user/${user.author}`;
+  const ghostdditUrl = ghostdditUserUrl(user.author);
 
   return (
     <div className="flex flex-wrap items-center gap-[22px] rounded-2xl border-4 border-double border-border bg-[image:var(--card-bg)] px-6 py-5">
@@ -60,6 +62,17 @@ export function ProfileHeader({ user }: Props) {
         >
           u/{user.author}
         </a>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <a
+            href={ghostdditUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Open u/${user.author} on Ghostddit`}
+            className="cursor-pointer rounded-md border border-accent-soft bg-accent-soft px-2 py-1 font-mono text-[11px] font-semibold text-accent no-underline hover:border-accent"
+          >
+            Ghostddit live view
+          </a>
+        </div>
       </div>
       <div className="ml-auto flex flex-wrap gap-[26px]">
         <Stat label="First seen" value={shortDate(firstSeen)} />
