@@ -1,17 +1,43 @@
 import { useEffect, useState } from "react";
-import { normalizeUsername } from "../lib/userRoute";
+import { parseRedditHandle, type RedditKind } from "../lib/userRoute";
 
 interface Props {
-  username: string;
-  onSubmit: (value: string) => void;
+  kind: RedditKind;
+  handle: string;
+  onSubmit: (kind: RedditKind, value: string) => void;
   onRescan: () => void;
   syncing: boolean;
 }
 
-export function Header({ username, onSubmit, onRescan, syncing }: Props) {
-  const [draft, setDraft] = useState(username);
+const prefixFor = (kind: RedditKind) => (kind === "subreddit" ? "r/" : "u/");
+const kindFor = (prefix: string): RedditKind => (prefix === "r/" ? "subreddit" : "user");
 
-  useEffect(() => setDraft(username), [username]);
+export function Header({ kind, handle, onSubmit, onRescan, syncing }: Props) {
+  const [draft, setDraft] = useState(handle);
+  const [prefix, setPrefix] = useState(prefixFor(kind));
+
+  useEffect(() => {
+    setDraft(handle);
+    setPrefix(prefixFor(kind));
+  }, [handle, kind]);
+
+  const parsed = parseRedditHandle(`${prefix}${draft}`, kindFor(prefix));
+  const searchValid = !!parsed;
+
+  function handleDraft(next: string) {
+    const match = /^\s*(u|r)\//i.exec(next);
+    if (match) {
+      setPrefix(match[1].toLowerCase() === "r" ? "r/" : "u/");
+      setDraft(next.replace(/^\s*[ur]\//i, ""));
+    } else {
+      setDraft(next);
+    }
+  }
+
+  function handleSubmit() {
+    const next = parseRedditHandle(`${prefix}${draft}`, kindFor(prefix));
+    if (next) onSubmit(next.kind, next.value);
+  }
 
   return (
     <header
@@ -37,8 +63,7 @@ export function Header({ username, onSubmit, onRescan, syncing }: Props) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          const v = normalizeUsername(draft);
-          if (v) onSubmit(v);
+          handleSubmit();
         }}
         className="ks-glass-control order-3 flex w-full items-center gap-[9px] rounded-[10px] px-3 py-2 sm:order-none sm:max-w-[440px] sm:flex-1"
       >
@@ -48,19 +73,38 @@ export function Header({ username, onSubmit, onRescan, syncing }: Props) {
             <line x1="9.4" y1="9.4" x2="12.5" y2="12.5" />
           </svg>
         </span>
-        <span className="font-mono text-[13px] text-dim">u/</span>
+        <button
+          type="button"
+          onClick={() => setPrefix((p) => (p === "r/" ? "u/" : "r/"))}
+          title="Toggle user or subreddit search"
+          className={`cursor-pointer rounded-md border px-2 py-0.5 font-mono text-[13px] font-semibold transition ${
+            searchValid
+              ? "border-accent-soft bg-accent-soft text-accent [text-shadow:0_0_12px_var(--accent)]"
+              : "border-white/10 bg-white/[0.04] text-dim"
+          }`}
+        >
+          {prefix}
+        </button>
         <input
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => handleDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              handleSubmit();
+            }
+          }}
+          placeholder="subreddit or username"
           spellCheck={false}
           autoCapitalize="none"
           className="flex-1 border-0 bg-transparent font-mono text-[13px] text-fg"
         />
-        <span
-          className="rounded-[5px] border border-white/10 px-[5px] py-px text-[11px] text-dim"
+        <button
+          type="submit"
+          className="cursor-pointer rounded-[5px] border border-white/10 bg-transparent px-[5px] py-px text-[11px] text-dim"
         >
           ↵
-        </span>
+        </button>
       </form>
 
       <div className="hidden flex-1 sm:block" />
@@ -74,12 +118,13 @@ export function Header({ username, onSubmit, onRescan, syncing }: Props) {
       <button
         onClick={onRescan}
         className="flex cursor-pointer items-center gap-[7px] rounded-[9px] border-0 bg-accent px-3.5 py-2 text-[13px] font-semibold text-white [box-shadow:0_6px_16px_color-mix(in_srgb,var(--accent)_20%,transparent)]"
+        title="Rescan"
       >
         <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.7">
           <path d="M12 7a5 5 0 1 1-1.5-3.6" />
           <polyline points="12,1.5 12,4 9.5,4" />
         </svg>
-        Rescan
+        <span className="hidden sm:inline">Rescan</span>
       </button>
     </header>
   );

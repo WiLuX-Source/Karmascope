@@ -1,10 +1,9 @@
 import type { UserRecord } from "../api/arctic";
 import { useState } from "react";
-import { avatarUrl, initials, monthYear, num, shortDate, relTime } from "../lib/format";
+import { avatarUrl, initials, shortDate, relTime } from "../lib/format";
 
 interface Props {
   user: UserRecord;
-  communities: number | undefined;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -18,12 +17,11 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function ProfileHeader({ user, communities }: Props) {
+export function ProfileHeader({ user }: Props) {
   const [imgOk, setImgOk] = useState(true);
   const m = user._meta;
   const firstSeen = Math.min(m.earliest_post_at, m.earliest_comment_at);
   const lastActive = Math.max(m.last_post_at, m.last_comment_at);
-  const total = m.num_posts + m.num_comments;
   const profileUrl = `https://www.reddit.com/user/${user.author}`;
 
   return (
@@ -62,15 +60,10 @@ export function ProfileHeader({ user, communities }: Props) {
         >
           u/{user.author}
         </a>
-        <div className="mt-[5px] font-mono text-[13px] text-muted-3">
-          active since {monthYear(firstSeen)} · {num(total)} contributions archived
-        </div>
       </div>
       <div className="ml-auto flex flex-wrap gap-[26px]">
         <Stat label="First seen" value={shortDate(firstSeen)} />
         <Stat label="Last active" value={relTime(lastActive)} />
-        <Stat label="Total karma" value={num(m.total_karma)} />
-        <Stat label="Communities" value={communities == null ? "…" : num(communities)} />
       </div>
     </div>
   );
