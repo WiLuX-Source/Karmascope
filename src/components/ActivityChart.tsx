@@ -1,7 +1,6 @@
-import { areaChart } from "../lib/svg";
 import { RANGE_MONTHS, type ActivitySeries, type Metric, type Range } from "../hooks/useProfile";
-import { Empty } from "./State";
 import { ChartSkeleton } from "./Skeleton";
+import { TimeSeriesAreaChart } from "./TimeSeriesAreaChart";
 
 interface Props {
   range: Range;
@@ -27,68 +26,7 @@ export function ActivityChart({ range, metric, data, isLoading, error }: Props) 
 
   let body;
   if (isLoading || error) body = <ChartSkeleton />;
-  else if (!series.some((v) => v > 0))
-    body = <Empty label="No archived activity in this range" />;
-  else {
-    const { linePath, areaPath, lastDot } = areaChart(series);
-    const showEvery = months.length > 18 ? 3 : months.length > 12 ? 2 : 1;
-
-    body = (
-      <div className="ks-chart-surface flex min-h-[220px] flex-1 flex-col rounded-xl px-3 pb-2 pt-3">
-        <svg
-          width="100%"
-          viewBox="0 0 780 210"
-          preserveAspectRatio="none"
-          className="block min-h-0 w-full flex-1"
-        >
-          {[14, 55.5, 97, 138.5, 180].map((y, i) => (
-            <line
-              key={y}
-              x1="10"
-              y1={y}
-              x2="770"
-              y2={y}
-              stroke={`rgba(255,255,255,${i === 4 ? 0.08 : 0.05})`}
-              strokeWidth="1"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-          <path d={areaPath} fill="url(#areaGrad)" />
-          <path
-            d={linePath}
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth="2"
-            vectorEffect="non-scaling-stroke"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <circle
-            cx={lastDot.cx}
-            cy={lastDot.cy}
-            r="3.6"
-            fill="var(--accent)"
-            stroke="#08080a"
-            strokeWidth="2"
-            vectorEffect="non-scaling-stroke"
-          />
-          <defs>
-            <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.28" />
-              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-        </svg>
-        <div className="mt-2 flex justify-between px-0.5">
-          {months.map((m, i) => (
-            <span key={i} className="font-mono text-[10px] text-dim">
-              {i % showEvery === 0 || i === months.length - 1 ? m : ""}
-            </span>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  else body = <TimeSeriesAreaChart months={months} values={series} metricLabel={metric} />;
 
   const metricWord = metric === "Both" ? "posts + comments" : metric.toLowerCase();
 
