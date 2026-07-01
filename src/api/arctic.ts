@@ -68,6 +68,105 @@ export function fetchUser(author: string) {
   });
 }
 
+// ---- /api/subreddits/search ----
+export interface SubredditMeta {
+  earliest_comment: number;
+  earliest_post: number;
+  num_comments: number;
+  num_posts: number;
+  num_comments_updated_at?: number;
+  num_posts_updated_at?: number;
+}
+export interface SubredditRecord {
+  display_name: string;
+  display_name_prefixed?: string;
+  title?: string;
+  public_description?: string;
+  description?: string;
+  created_utc: number;
+  subscribers?: number;
+  over18: boolean;
+  icon_img?: string;
+  community_icon?: string;
+  primary_color?: string;
+  key_color?: string;
+  url?: string;
+  wiki_enabled?: boolean;
+  _meta: SubredditMeta;
+}
+
+export function fetchSubreddit(subreddit: string) {
+  const pick = (rows: SubredditRecord[] | undefined) => {
+    const lower = subreddit.toLowerCase();
+    return (
+      rows?.find((s) => s.display_name?.toLowerCase() === lower) ??
+      rows?.find((s) => s.display_name_prefixed?.toLowerCase() === `r/${lower}`) ??
+      rows?.[0]
+    );
+  };
+
+  return get<{ data: SubredditRecord[] }>("/api/subreddits/search", {
+    subreddit,
+    limit: 10,
+  }).then(async (r) => {
+    const exact =
+      pick(r.data) ??
+      pick(
+        (
+          await get<{ data: SubredditRecord[] }>("/api/subreddits/search", {
+            subreddit,
+            limit: 10,
+            over18: true,
+          })
+        ).data,
+      );
+    if (!exact) throw new Error(`No archived data for r/${subreddit}`);
+    return exact;
+  });
+}
+
+// ---- /api/time_series ----
+export type SubredditSeriesMetric = "Subscribers" | "Posts" | "Comments" | "Score";
+export interface TimeSeriesPoint {
+  date: number;
+  value: number;
+}
+
+const seriesKey: Record<SubredditSeriesMetric, string> = {
+  Subscribers: "subscribers",
+  Posts: "posts/count",
+  Comments: "comments/count",
+  Score: "posts/sum_score",
+};
+
+export function fetchSubredditTimeSeries(
+  subreddit: string,
+  metric: SubredditSeriesMetric,
+  precision = "month",
+) {
+  return get<{ data: TimeSeriesPoint[] }>("/api/time_series", {
+    key: `r/${subreddit}/${seriesKey[metric]}`,
+    precision,
+  }).then((r) => r.data ?? []);
+}
+
+// ---- /api/subreddits/wikis/list ----
+export interface WikiPage {
+  name: string;
+  path: string;
+}
+
+export function fetchSubredditWikis(subreddit: string) {
+  return get<{ data: string[] }>("/api/subreddits/wikis/list", {
+    subreddit,
+  }).then((r) =>
+    (r.data ?? []).map((path) => {
+      const name = path.split("/").filter(Boolean).pop() ?? "index";
+      return { name, path };
+    }),
+  );
+}
+
 // ---- aggregates by month ----
 export interface AggBucket {
   created_utc: string;
@@ -150,11 +249,13 @@ export interface RawPost {
   id: string;
   title: string;
   selftext?: string;
+  author?: string;
   score: number;
   subreddit: string;
   num_comments: number;
   created_utc: number;
   permalink?: string;
+  link_flair_text?: string;
 }
 export interface RawComment {
   id: string;
@@ -171,6 +272,23 @@ export function fetchRecentPosts(author: string, sort: "asc" | "desc", limit = 8
     sort,
     limit,
     fields: "id,title,selftext,score,subreddit,num_comments,created_utc",
+  }).then((r) => r.data ?? []);
+}
+
+export function fetchSubredditPosts(
+  subreddit: string,
+  sort: "asc" | "desc",
+  limit = 120,
+  after?: string,
+  before?: string,
+) {
+  return get<{ data: RawPost[] }>("/api/posts/search", {
+    subreddit,
+    sort,
+    limit,
+    after,
+    before,
+    fields: "id,title,selftext,author,score,subreddit,num_comments,created_utc,link_flair_text",
   }).then((r) => r.data ?? []);
 }
 

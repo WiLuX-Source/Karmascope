@@ -13,6 +13,7 @@ import { Composition } from "./components/Composition";
 import { RecentActivity } from "./components/RecentActivity";
 import { RateLimitToast } from "./components/RateLimitToast";
 import { Loading, ErrorNote } from "./components/State";
+import type { RedditKind } from "./lib/userRoute";
 import {
   useUser,
   useActivity,
@@ -24,10 +25,10 @@ import {
 
 interface AppProps {
   username: string;
-  onUsernameSubmit: (value: string) => void;
+  onHandleSubmit: (kind: RedditKind, value: string) => void;
 }
 
-export function App({ username, onUsernameSubmit }: AppProps) {
+export function App({ username, onHandleSubmit }: AppProps) {
   const qc = useQueryClient();
   const hasUsername = username.length > 0;
   const [controls, setControls] = useState<ControlsState>({
@@ -71,8 +72,9 @@ export function App({ username, onUsernameSubmit }: AppProps) {
       <RateLimitToast />
 
       <Header
-        username={username}
-        onSubmit={onUsernameSubmit}
+        kind="user"
+        handle={username}
+        onSubmit={onHandleSubmit}
         onRescan={handleRescan}
         syncing={syncing}
       />
