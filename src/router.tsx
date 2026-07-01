@@ -5,6 +5,7 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 import { App } from "./App";
+import { GhostdditApp } from "./GhostdditApp";
 import { SubredditApp } from "./SubredditApp";
 import { normalizeSubreddit, normalizeUsername, type RedditKind } from "./lib/userRoute";
 
@@ -24,13 +25,19 @@ const userRoute = createRoute({
   component: UserRoute,
 });
 
+const ghostdditUserRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/u/$username/ghostddit",
+  component: GhostdditUserRoute,
+});
+
 const subredditRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/r/$subreddit",
   component: SubredditRoute,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, userRoute, subredditRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, userRoute, ghostdditUserRoute, subredditRoute]);
 
 const basepath =
   import.meta.env.BASE_URL === "/"
@@ -83,6 +90,36 @@ function SubredditRoute() {
   }
 
   return <SubredditApp subreddit={subreddit} onHandleSubmit={handleSubmit} />;
+}
+
+function GhostdditUserRoute() {
+  const { username } = ghostdditUserRoute.useParams();
+  const navigate = ghostdditUserRoute.useNavigate();
+
+  function handleSubmit(kind: RedditKind, value: string) {
+    if (kind === "subreddit") {
+      const next = normalizeSubreddit(value);
+      if (!next) return;
+      navigate({ to: "/r/$subreddit", params: { subreddit: next }, search: true, hash: true });
+      return;
+    }
+
+    const next = normalizeUsername(value);
+    if (!next || next === username) return;
+    navigate({ to: "/u/$username/ghostddit", params: { username: next }, search: true, hash: true });
+  }
+
+  function handleBackToArchive() {
+    navigate({ to: "/u/$username", params: { username }, search: true, hash: true });
+  }
+
+  return (
+    <GhostdditApp
+      username={username}
+      onHandleSubmit={handleSubmit}
+      onBackToArchive={handleBackToArchive}
+    />
+  );
 }
 
 function IndexRoute() {
