@@ -6,10 +6,8 @@ import {
   fetchSubredditWikis,
   RateLimitError,
   type RawPost,
-  type SubredditRecord,
   type SubredditSeriesMetric,
 } from "../api/arctic";
-import { fetchGhostdditSubreddit, type GhostdditSubreddit } from "../api/ghostddit";
 import type { Range } from "./useProfile";
 
 export type SubredditMetric = SubredditSeriesMetric;
@@ -62,95 +60,10 @@ function postUrl(post: RawPost) {
     : `https://www.reddit.com/r/${post.subreddit}/comments/${post.id}`;
 }
 
-const emptyMeta = {
-  earliest_comment: 0,
-  earliest_post: 0,
-  num_comments: 0,
-  num_posts: 0,
-};
-
-function preferText(live: string | undefined, archived: string | undefined) {
-  return live?.trim() ? live : archived;
-}
-
-function activeUsers(live: GhostdditSubreddit) {
-  return live.active_user_count ?? live.accounts_active;
-}
-
-function mergeSubredditSnapshot(archived: SubredditRecord, live: GhostdditSubreddit): SubredditRecord {
-  const active = activeUsers(live);
-
-  return {
-    ...archived,
-    display_name: live.display_name || archived.display_name,
-    display_name_prefixed: live.display_name_prefixed || archived.display_name_prefixed,
-    title: preferText(live.title, archived.title),
-    public_description: preferText(live.public_description, archived.public_description),
-    description: preferText(live.description, archived.description),
-    created_utc: live.created_utc || archived.created_utc,
-    subscribers: live.subscribers ?? archived.subscribers,
-    active_user_count: active,
-    accounts_active: live.accounts_active,
-    over18: live.over18,
-    icon_img: preferText(live.icon_img, archived.icon_img),
-    community_icon: preferText(live.community_icon, archived.community_icon),
-    primary_color: preferText(live.primary_color, archived.primary_color),
-    key_color: preferText(live.key_color, archived.key_color),
-    url: preferText(live.url, archived.url),
-    wiki_enabled: live.wiki_enabled ?? archived.wiki_enabled,
-    _sources: {
-      snapshot: "reddit-live",
-      subscribers: live.subscribers == null ? "arctic" : "reddit-live",
-      active_users: active == null ? undefined : "reddit-live",
-      archive: "arctic",
-    },
-  };
-}
-
-function liveOnlySubreddit(live: GhostdditSubreddit): SubredditRecord {
-  const active = activeUsers(live);
-
-  return {
-    ...live,
-    active_user_count: active,
-    _meta: emptyMeta,
-    _sources: {
-      snapshot: "reddit-live",
-      subscribers: "reddit-live",
-      active_users: active == null ? undefined : "reddit-live",
-      archive: "unavailable",
-    },
-  };
-}
-
-async function fetchSubredditWithLiveSnapshot(subreddit: string): Promise<SubredditRecord> {
-  const [archived, live] = await Promise.allSettled([
-    fetchSubreddit(subreddit),
-    fetchGhostdditSubreddit(subreddit),
-  ]);
-
-  if (archived.status === "fulfilled") {
-    if (live.status === "fulfilled") return mergeSubredditSnapshot(archived.value, live.value);
-
-    return {
-      ...archived.value,
-      _sources: {
-        snapshot: "arctic",
-        subscribers: "arctic",
-        archive: "arctic",
-      },
-    };
-  }
-
-  if (live.status === "fulfilled") return liveOnlySubreddit(live.value);
-
-  throw archived.reason;
-}
-
 export function useSubreddit(subreddit: string) {
   return useQuery({
     queryKey: ["subreddit", subreddit],
-    queryFn: () => fetchSubredditWithLiveSnapshot(subreddit),
+    queryFn: () => fetchSubreddit(subreddit),
     enabled: !!subreddit,
     ...opts,
   });
