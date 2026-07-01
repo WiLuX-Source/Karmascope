@@ -45,12 +45,14 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
 
   const sub = useSubreddit(subreddit);
   const activity = useSubredditActivity(subreddit, metric);
+  const subscriberSeries = useSubredditActivity(subreddit, "Subscribers");
   const wikis = useSubredditWikis(subreddit);
   const topPosts = useSubredditTopPosts(subreddit, postWindow);
   const contributors = useSubredditContributors(subreddit);
   const syncing =
     sub.isFetching ||
     activity.isFetching ||
+    subscriberSeries.isFetching ||
     wikis.isFetching ||
     topPosts.isFetching ||
     contributors.isFetching;
@@ -91,7 +93,12 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
         ) : sub.data ? (
           <>
             <SubredditHeader subreddit={sub.data} />
-            <SubredditKpis subreddit={sub.data} wikiCount={wikis.data?.length} authorCount={contributors.data?.length} />
+            <SubredditKpis
+              subreddit={sub.data}
+              subscriberCount={latestPositiveValue(subscriberSeries.data?.values)}
+              wikiCount={wikis.data?.length}
+              authorCount={contributors.data?.length}
+            />
 
             <div className="flex flex-wrap gap-3.5">
               <SubredditActivityChart
@@ -137,6 +144,15 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
       </main>
     </div>
   );
+}
+
+function latestPositiveValue(values: number[] | undefined) {
+  if (!values) return undefined;
+  for (let i = values.length - 1; i >= 0; i--) {
+    const value = values[i];
+    if (value > 0) return value;
+  }
+  return undefined;
 }
 
 function Segmented<T extends string>({
@@ -278,19 +294,24 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function SubredditKpis({
   subreddit,
+  subscriberCount,
   wikiCount,
   authorCount,
 }: {
   subreddit: SubredditRecord;
+  subscriberCount: number | undefined;
   wikiCount: number | undefined;
   authorCount: number | undefined;
 }) {
+  const hasSeriesSubscriberCount = subscriberCount != null;
   const tiles: Tile[] = [
     {
       label: "Subscribers",
       field: "subscribers",
-      value: num(subreddit.subscribers),
-      sub: "latest archived subreddit snapshot",
+      value: num(subscriberCount ?? subreddit.subscribers),
+      sub: hasSeriesSubscriberCount
+        ? "latest archived subscriber statistic"
+        : "latest archived subreddit snapshot",
     },
     {
       label: "Posts archived",
@@ -346,10 +367,21 @@ function SubredditActivityChart({
   const n = SUBREDDIT_RANGE_MONTHS[range];
   const shownMonths = (months ?? []).slice(-n);
   const series = (values ?? []).slice(-n);
+  const showExactValues = metric === "Subscribers";
 
   let body;
   if (isLoading || error) body = <ChartSkeleton />;
-  else body = <TimeSeriesAreaChart months={shownMonths} values={series} metricLabel={metric} />;
+  else {
+    body = (
+      <TimeSeriesAreaChart
+        months={shownMonths}
+        values={series}
+        metricLabel={metric}
+        valueFormatter={showExactValues ? num : undefined}
+        yAxisWidth={showExactValues ? 78 : undefined}
+      />
+    );
+  }
 
   return (
     <div className="ks-card flex min-w-0 flex-[1.9_1_380px] flex-col">

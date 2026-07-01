@@ -6,6 +6,8 @@ interface Props {
   values: number[];
   metricLabel: string;
   emptyLabel?: string;
+  valueFormatter?: (value: number) => string;
+  yAxisWidth?: number;
 }
 
 interface Point {
@@ -17,7 +19,7 @@ interface Point {
 
 const MIN_HEIGHT = 260;
 const MAX_HEIGHT = 360;
-const PAD = { top: 18, right: 18, bottom: 32, left: 48 };
+const PAD = { top: 18, right: 18, bottom: 32 };
 
 function niceMax(value: number) {
   if (value <= 0) return 1;
@@ -103,6 +105,8 @@ export function TimeSeriesAreaChart({
   values,
   metricLabel,
   emptyLabel = "No archived activity in this range",
+  valueFormatter = compact,
+  yAxisWidth = 48,
 }: Props) {
   const gradId = useId().replace(/:/g, "");
   const { ref, width, height } = useElementSize();
@@ -110,7 +114,7 @@ export function TimeSeriesAreaChart({
   const hasData = values.some((v) => v > 0);
   const chartWidth = Math.max(width, 320);
   const chartHeight = clamp(Math.max(height, MIN_HEIGHT), MIN_HEIGHT, MAX_HEIGHT);
-  const plotWidth = Math.max(1, chartWidth - PAD.left - PAD.right);
+  const plotWidth = Math.max(1, chartWidth - yAxisWidth - PAD.right);
   const plotHeight = chartHeight - PAD.top - PAD.bottom;
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
@@ -129,11 +133,11 @@ export function TimeSeriesAreaChart({
   const points = useMemo<Point[]>(() => {
     if (!values.length) return [];
     return values.map((value, i) => {
-      const x = PAD.left + (values.length === 1 ? plotWidth / 2 : (i / (values.length - 1)) * plotWidth);
+      const x = yAxisWidth + (values.length === 1 ? plotWidth / 2 : (i / (values.length - 1)) * plotWidth);
       const y = PAD.top + plotHeight - ((value - domainMin) / domainSpan) * plotHeight;
       return { x, y, value, label: months[i] ?? "" };
     });
-  }, [domainMin, domainSpan, months, plotHeight, plotWidth, values]);
+  }, [domainMin, domainSpan, months, plotHeight, plotWidth, values, yAxisWidth]);
 
   const line = linePath(points);
   const baseline = PAD.top + plotHeight;
@@ -143,12 +147,12 @@ export function TimeSeriesAreaChart({
       : "";
   const active = activeIndex == null ? points[points.length - 1] : points[activeIndex];
   const showEvery = months.length > 18 ? 3 : months.length > 12 ? 2 : 1;
-  const label = `${metricLabel} chart. Latest value ${active ? compact(active.value) : "none"}.`;
+  const label = `${metricLabel} chart. Latest value ${active ? valueFormatter(active.value) : "none"}.`;
 
   function handlePointer(clientX: number, left: number) {
     if (!points.length) return;
-    const localX = clamp(clientX - left, PAD.left, PAD.left + plotWidth);
-    const ratio = plotWidth <= 0 ? 0 : (localX - PAD.left) / plotWidth;
+    const localX = clamp(clientX - left, yAxisWidth, yAxisWidth + plotWidth);
+    const ratio = plotWidth <= 0 ? 0 : (localX - yAxisWidth) / plotWidth;
     setActiveIndex(Math.round(ratio * (points.length - 1)));
   }
 
@@ -186,9 +190,9 @@ export function TimeSeriesAreaChart({
           const y = PAD.top + plotHeight - ((tick - domainMin) / domainSpan) * plotHeight;
           return (
             <g key={tick}>
-              <line x1={PAD.left} y1={y} x2={chartWidth - PAD.right} y2={y} stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
-              <text x={PAD.left - 10} y={y + 4} textAnchor="end" className="fill-dim font-mono text-[10px]">
-                {compact(tick)}
+              <line x1={yAxisWidth} y1={y} x2={chartWidth - PAD.right} y2={y} stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
+              <text x={yAxisWidth - 10} y={y + 4} textAnchor="end" className="fill-dim font-mono text-[10px]">
+                {valueFormatter(tick)}
               </text>
             </g>
           );
@@ -215,20 +219,20 @@ export function TimeSeriesAreaChart({
           <g>
             <line x1={active.x} y1={PAD.top} x2={active.x} y2={baseline} stroke="rgba(255,255,255,0.16)" strokeWidth="1" />
             <circle cx={active.x} cy={active.y} r="4" fill="var(--accent)" stroke="#08080a" strokeWidth="2" />
-            <g transform={`translate(${clamp(active.x + 12, PAD.left, chartWidth - 136)}, ${clamp(active.y - 34, PAD.top, chartHeight - 72)})`}>
+            <g transform={`translate(${clamp(active.x + 12, yAxisWidth, chartWidth - 136)}, ${clamp(active.y - 34, PAD.top, chartHeight - 72)})`}>
               <rect width="124" height="48" rx="8" fill="#101014" stroke="rgba(255,255,255,0.12)" />
               <text x="10" y="19" className="fill-muted font-mono text-[10px]">
                 {active.label}
               </text>
               <text x="10" y="37" className="fill-fg font-mono text-[15px] font-semibold">
-                {compact(active.value)}
+                {valueFormatter(active.value)}
               </text>
             </g>
           </g>
         )}
 
         <rect
-          x={PAD.left}
+          x={yAxisWidth}
           y={PAD.top}
           width={plotWidth}
           height={plotHeight}
