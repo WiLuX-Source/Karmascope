@@ -95,7 +95,7 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
             <SubredditHeader subreddit={sub.data} />
             <SubredditKpis
               subreddit={sub.data}
-              subscriberCount={latestValue(subscriberSeries.data?.values)}
+              subscriberCount={latestPositiveValue(subscriberSeries.data?.values)}
               wikiCount={wikis.data?.length}
               authorCount={contributors.data?.length}
             />
@@ -146,8 +146,13 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
   );
 }
 
-function latestValue(values: number[] | undefined) {
-  return values?.[values.length - 1];
+function latestPositiveValue(values: number[] | undefined) {
+  if (!values) return undefined;
+  for (let i = values.length - 1; i >= 0; i--) {
+    const value = values[i];
+    if (value > 0) return value;
+  }
+  return undefined;
 }
 
 function Segmented<T extends string>({
