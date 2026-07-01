@@ -45,12 +45,14 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
 
   const sub = useSubreddit(subreddit);
   const activity = useSubredditActivity(subreddit, metric);
+  const subscriberSeries = useSubredditActivity(subreddit, "Subscribers");
   const wikis = useSubredditWikis(subreddit);
   const topPosts = useSubredditTopPosts(subreddit, postWindow);
   const contributors = useSubredditContributors(subreddit);
   const syncing =
     sub.isFetching ||
     activity.isFetching ||
+    subscriberSeries.isFetching ||
     wikis.isFetching ||
     topPosts.isFetching ||
     contributors.isFetching;
@@ -91,7 +93,12 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
         ) : sub.data ? (
           <>
             <SubredditHeader subreddit={sub.data} />
-            <SubredditKpis subreddit={sub.data} wikiCount={wikis.data?.length} authorCount={contributors.data?.length} />
+            <SubredditKpis
+              subreddit={sub.data}
+              subscriberCount={latestValue(subscriberSeries.data?.values)}
+              wikiCount={wikis.data?.length}
+              authorCount={contributors.data?.length}
+            />
 
             <div className="flex flex-wrap gap-3.5">
               <SubredditActivityChart
@@ -137,6 +144,10 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
       </main>
     </div>
   );
+}
+
+function latestValue(values: number[] | undefined) {
+  return values?.[values.length - 1];
 }
 
 function Segmented<T extends string>({
@@ -278,19 +289,24 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function SubredditKpis({
   subreddit,
+  subscriberCount,
   wikiCount,
   authorCount,
 }: {
   subreddit: SubredditRecord;
+  subscriberCount: number | undefined;
   wikiCount: number | undefined;
   authorCount: number | undefined;
 }) {
+  const hasSeriesSubscriberCount = subscriberCount != null;
   const tiles: Tile[] = [
     {
       label: "Subscribers",
       field: "subscribers",
-      value: num(subreddit.subscribers),
-      sub: "latest archived subreddit snapshot",
+      value: num(subscriberCount ?? subreddit.subscribers),
+      sub: hasSeriesSubscriberCount
+        ? "latest archived subscriber statistic"
+        : "latest archived subreddit snapshot",
     },
     {
       label: "Posts archived",
