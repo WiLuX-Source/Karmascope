@@ -85,6 +85,8 @@ export interface SubredditRecord {
   description?: string;
   created_utc: number;
   subscribers?: number;
+  active_user_count?: number;
+  accounts_active?: number;
   over18: boolean;
   icon_img?: string;
   community_icon?: string;
@@ -93,6 +95,12 @@ export interface SubredditRecord {
   url?: string;
   wiki_enabled?: boolean;
   _meta: SubredditMeta;
+  _sources?: {
+    snapshot: "reddit-live" | "arctic";
+    subscribers: "reddit-live" | "arctic";
+    active_users?: "reddit-live";
+    archive: "arctic" | "unavailable";
+  };
 }
 
 export function fetchSubreddit(subreddit: string) {
