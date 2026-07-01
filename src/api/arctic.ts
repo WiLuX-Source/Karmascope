@@ -88,6 +88,10 @@ export interface SubredditRecord {
   over18: boolean;
   icon_img?: string;
   community_icon?: string;
+  banner_img?: string;
+  banner_background_image?: string;
+  mobile_banner_image?: string;
+  banner_background_color?: string;
   primary_color?: string;
   key_color?: string;
   url?: string;
