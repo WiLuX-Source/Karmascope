@@ -75,7 +75,7 @@ function postUrl(post: RawPost) {
 
 const nextCursor = (rows: readonly { created_utc: number }[]) => {
   const last = rows[rows.length - 1];
-  return last ? new Date(last.created_utc * 1000).toISOString() : undefined;
+  return last ? new Date((last.created_utc - 1) * 1000).toISOString() : undefined;
 };
 
 function rankPosts(posts: RawPost[], page: number): RankedPost[] {

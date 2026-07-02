@@ -624,7 +624,7 @@ function TopPosts({
         <span className="ks-label">Top posts</span>
         <div className="flex flex-wrap items-center gap-[7px]">
           <Segmented options={postWindows} value={window} onChange={onWindowChange} />
-          <span className="font-mono text-xs text-dim">rank=score · {windowLabel}</span>
+          <span className="font-mono text-xs text-dim">score-sorted sample · {windowLabel}</span>
         </div>
       </div>
       <div className="ks-endpoint">/api/posts/search · subreddit={subreddit}</div>

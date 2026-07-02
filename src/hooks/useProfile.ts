@@ -163,9 +163,11 @@ type RecentQueryKey = ["recent-kind", string, Sort, RecentKind];
 const searchCursor = (sort: Sort, cursor?: string) =>
   cursor ? { [sort === "Newest" ? "before" : "after"]: cursor } : {};
 
-const nextCursor = (rows: readonly { created_utc: number }[]) => {
+const nextCursor = (rows: readonly { created_utc: number }[], sort: Sort) => {
   const last = rows[rows.length - 1];
-  return last ? new Date(last.created_utc * 1000).toISOString() : undefined;
+  if (!last) return undefined;
+  const nextSecond = last.created_utc + (sort === "Newest" ? -1 : 1);
+  return new Date(nextSecond * 1000).toISOString();
 };
 
 function sortRecent(items: RecentItem[], sort: Sort) {
@@ -231,7 +233,7 @@ function useRecentKind(username: string, sort: Sort, kind: RecentKind, enabled: 
       });
       return {
         items: sortRecent(items, sort),
-        cursor: nextCursor(rows) ?? pageParam.cursor,
+        cursor: nextCursor(rows, sort) ?? pageParam.cursor,
         hasMore: rows.length === RECENT_PAGE_SIZE,
       };
     },
