@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, type InfiniteData } from "@tanstack/react-query";
 import { RateLimitError } from "../api/arctic";
 import {
   fetchUser,
@@ -14,8 +14,10 @@ import {
 export type Range = "6M" | "12M" | "24M";
 export type Metric = "Both" | "Posts" | "Comments";
 export type Sort = "Newest" | "Oldest";
+export type RecentFilter = "All" | "Posts" | "Comments";
 
 export const RANGE_MONTHS: Record<Range, number> = { "6M": 6, "12M": 12, "24M": 24 };
+export const RECENT_PAGE_SIZE = 5;
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
 
 // Arctic's monthly aggregate silently returns all-zero buckets unless the
@@ -46,7 +48,7 @@ const opts = {
 export function useUser(username: string) {
   return useQuery({
     queryKey: ["user", username],
-    queryFn: () => fetchUser(username),
+    queryFn: ({ signal }) => fetchUser(username, signal),
     enabled: !!username,
     ...opts,
   });
@@ -65,13 +67,13 @@ export function useActivity(
 ) {
   return useQuery({
     queryKey: ["activity", username],
-    queryFn: async (): Promise<ActivitySeries> => {
+    queryFn: async ({ signal }): Promise<ActivitySeries> => {
       const after = monthStart(earliestSec!);
       const before = nextMonthStart(lastActiveSec!);
 
       const [posts, comments] = await Promise.all([
-        fetchPostsAggregate(username, after, before),
-        fetchCommentsAggregate(username, after, before),
+        fetchPostsAggregate(username, after, before, signal),
+        fetchCommentsAggregate(username, after, before, signal),
       ]);
 
       // Both share frequency=month + same bounds, so buckets align by index.
@@ -109,7 +111,7 @@ export function useActivity(
 export function useSubreddits(username: string) {
   return useQuery({
     queryKey: ["subreddits", username],
-    queryFn: () => fetchSubreddits(username),
+    queryFn: ({ signal }) => fetchSubreddits(username, 1000, signal),
     enabled: !!username,
     ...opts,
   });
@@ -118,7 +120,7 @@ export function useSubreddits(username: string) {
 export function useInteractions(username: string, enabled: boolean) {
   return useQuery({
     queryKey: ["interactions", username],
-    queryFn: () => fetchInteractions(username),
+    queryFn: ({ signal }) => fetchInteractions(username, 8, signal),
     enabled: !!username && enabled,
     retry: 0, // endpoint frequently 504s on heavy users; fail fast
     staleTime: opts.staleTime,
@@ -128,7 +130,7 @@ export function useInteractions(username: string, enabled: boolean) {
 export function useFlairs(username: string) {
   return useQuery({
     queryKey: ["flairs", username],
-    queryFn: () => fetchFlairs(username),
+    queryFn: ({ signal }) => fetchFlairs(username, signal),
     enabled: !!username,
     ...opts,
   });
@@ -145,48 +147,130 @@ export interface RecentItem {
   url: string;
 }
 
-export function useRecent(username: string, sort: Sort) {
+interface RecentPageParam {
+  cursor?: string;
+}
+
+interface RecentPage {
+  items: RecentItem[];
+  cursor?: string;
+  hasMore: boolean;
+}
+
+type RecentKind = "Posts" | "Comments";
+type RecentQueryKey = ["recent-kind", string, Sort, RecentKind];
+
+const searchCursor = (sort: Sort, cursor?: string) =>
+  cursor ? { [sort === "Newest" ? "before" : "after"]: cursor } : {};
+
+const nextCursor = (rows: readonly { created_utc: number }[], sort: Sort) => {
+  const last = rows[rows.length - 1];
+  if (!last) return undefined;
+  const nextSecond = last.created_utc + (sort === "Newest" ? -1 : 1);
+  return new Date(nextSecond * 1000).toISOString();
+};
+
+function sortRecent(items: RecentItem[], sort: Sort) {
+  return [...items].sort((a, b) =>
+    sort === "Newest" ? b.created_utc - a.created_utc : a.created_utc - b.created_utc,
+  );
+}
+
+function uniqueRecent(items: RecentItem[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.kind}:${item.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function useRecentKind(username: string, sort: Sort, kind: RecentKind, enabled: boolean) {
   const dir = sort === "Newest" ? "desc" : "asc";
-  return useQuery({
-    queryKey: ["recent", username, sort],
-    queryFn: async () => {
-      const limit = 24;
-      const [posts, comments] = await Promise.all([
-        fetchRecentPosts(username, dir, limit),
-        fetchRecentComments(username, dir, limit),
-      ]);
-      const items: RecentItem[] = [
-        ...posts.map((p) => ({
-          id: p.id,
-          kind: "Post" as const,
-          score: p.score,
-          text: p.title || p.selftext || "(untitled)",
-          subreddit: p.subreddit,
-          comments: p.num_comments,
-          created_utc: p.created_utc,
-          url: `https://www.reddit.com/r/${p.subreddit}/comments/${p.id}`,
-        })),
-        ...comments.map((c) => {
-          const postId = (c.link_id ?? "").replace(/^t3_/, "");
+  return useInfiniteQuery<
+    RecentPage,
+    Error,
+    InfiniteData<RecentPage, RecentPageParam>,
+    RecentQueryKey,
+    RecentPageParam
+  >({
+    queryKey: ["recent-kind", username, sort, kind],
+    queryFn: async ({ pageParam, signal }) => {
+      const cursor = searchCursor(sort, pageParam.cursor);
+      const rows =
+        kind === "Posts"
+          ? await fetchRecentPosts(username, dir, RECENT_PAGE_SIZE, cursor, signal)
+          : await fetchRecentComments(username, dir, RECENT_PAGE_SIZE, cursor, signal);
+      const items: RecentItem[] = rows.map((row) => {
+        if (kind === "Posts") {
+          const post = row as Awaited<ReturnType<typeof fetchRecentPosts>>[number];
           return {
-            id: c.id,
-            kind: "Comment" as const,
-            score: c.score,
-            text: c.body || "(empty)",
-            subreddit: c.subreddit,
-            created_utc: c.created_utc,
-            url: postId
-              ? `https://www.reddit.com/r/${c.subreddit}/comments/${postId}/comment/${c.id}`
-              : `https://www.reddit.com/comments/${c.id}`,
+            id: post.id,
+            kind: "Post" as const,
+            score: post.score,
+            text: post.title || post.selftext || "(untitled)",
+            subreddit: post.subreddit,
+            comments: post.num_comments,
+            created_utc: post.created_utc,
+            url: `https://www.reddit.com/r/${post.subreddit}/comments/${post.id}`,
           };
-        }),
-      ];
-      items.sort((a, b) =>
-        sort === "Newest" ? b.created_utc - a.created_utc : a.created_utc - b.created_utc,
-      );
-      return items;
+        }
+
+        const comment = row as Awaited<ReturnType<typeof fetchRecentComments>>[number];
+        const postId = (comment.link_id ?? "").replace(/^t3_/, "");
+        return {
+          id: comment.id,
+          kind: "Comment" as const,
+          score: comment.score,
+          text: comment.body || "(empty)",
+          subreddit: comment.subreddit,
+          created_utc: comment.created_utc,
+          url: postId
+            ? `https://www.reddit.com/r/${comment.subreddit}/comments/${postId}/comment/${comment.id}`
+            : `https://www.reddit.com/comments/${comment.id}`,
+        };
+      });
+      return {
+        items: sortRecent(items, sort),
+        cursor: nextCursor(rows, sort) ?? pageParam.cursor,
+        hasMore: rows.length === RECENT_PAGE_SIZE,
+      };
     },
-    enabled: !!username,
+    initialPageParam: {},
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? { cursor: lastPage.cursor } : undefined),
+    enabled: !!username && enabled,
     ...opts,
   });
+}
+
+export function useRecent(username: string, sort: Sort, filter: RecentFilter) {
+  const includePosts = filter !== "Comments";
+  const includeComments = filter !== "Posts";
+  const posts = useRecentKind(username, sort, "Posts", includePosts);
+  const comments = useRecentKind(username, sort, "Comments", includeComments);
+  const postItems = includePosts ? (posts.data?.pages.flatMap((page) => page.items) ?? []) : [];
+  const commentItems = includeComments
+    ? (comments.data?.pages.flatMap((page) => page.items) ?? [])
+    : [];
+  const activeQueries = [
+    ...(includePosts ? [posts] : []),
+    ...(includeComments ? [comments] : []),
+  ];
+
+  return {
+    data: sortRecent(uniqueRecent([...postItems, ...commentItems]), sort),
+    isLoading: activeQueries.some((query) => query.isLoading),
+    isFetching: activeQueries.some((query) => query.isFetching),
+    isFetchingNextPage: activeQueries.some((query) => query.isFetchingNextPage),
+    hasNextPage: activeQueries.some((query) => query.hasNextPage),
+    fetchNextPage: async () => {
+      await Promise.all(
+        activeQueries
+          .filter((query) => query.hasNextPage && !query.isFetchingNextPage)
+          .map((query) => query.fetchNextPage()),
+      );
+    },
+    error: activeQueries.find((query) => query.error)?.error,
+  };
 }

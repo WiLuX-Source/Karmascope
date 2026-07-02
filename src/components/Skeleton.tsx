@@ -76,7 +76,7 @@ export function RowsSkeleton({ rows = 5 }: { rows?: number }) {
 }
 
 // Recent activity rows (score + text + tag).
-export function RecentSkeleton({ rows = 6 }: { rows?: number }) {
+export function RecentSkeleton({ rows = 5 }: { rows?: number }) {
   return (
     <div className="mt-2 flex flex-col">
       {Array.from({ length: rows }).map((_, i) => (

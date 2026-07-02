@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Header } from "./components/Header";
 import { RateLimitToast } from "./components/RateLimitToast";
@@ -44,21 +44,29 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
   const [postWindow, setPostWindow] = useState<PostWindow>("Year");
 
   const sub = useSubreddit(subreddit);
-  const activity = useSubredditActivity(subreddit, metric);
-  const subscriberSeries = useSubredditActivity(subreddit, "Subscribers");
-  const wikis = useSubredditWikis(subreddit);
-  const topPosts = useSubredditTopPosts(subreddit, postWindow);
-  const contributors = useSubredditContributors(subreddit);
+  const secondaryEnabled = !!sub.data;
+  const activity = useSubredditActivity(subreddit, metric, secondaryEnabled);
+  const wikis = useSubredditWikis(
+    subreddit,
+    secondaryEnabled && sub.data?.wiki_enabled !== false,
+  );
+  const topPosts = useSubredditTopPosts(subreddit, postWindow, secondaryEnabled);
+  const contributors = useSubredditContributors(subreddit, secondaryEnabled);
+  const wikiPages = sub.data?.wiki_enabled === false ? [] : wikis.data;
   const syncing =
     sub.isFetching ||
     activity.isFetching ||
-    subscriberSeries.isFetching ||
     wikis.isFetching ||
     topPosts.isFetching ||
     contributors.isFetching;
 
   function handleRescan() {
-    qc.invalidateQueries();
+    void qc.invalidateQueries({
+      predicate: (query) =>
+        typeof query.queryKey[0] === "string" &&
+        query.queryKey[0].startsWith("subreddit") &&
+        query.queryKey[1] === subreddit,
+    });
   }
 
   return (
@@ -95,8 +103,12 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
             <SubredditHeader subreddit={sub.data} />
             <SubredditKpis
               subreddit={sub.data}
-              subscriberCount={latestPositiveValue(subscriberSeries.data?.values)}
-              wikiCount={wikis.data?.length}
+              subscriberCount={
+                metric === "Subscribers"
+                  ? latestPositiveValue(activity.data?.values)
+                  : sub.data.subscribers
+              }
+              wikiCount={wikiPages?.length}
               authorCount={contributors.data?.length}
             />
 
@@ -123,7 +135,7 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
             </div>
 
             <div className="flex flex-wrap items-stretch gap-3.5">
-              <WikiGrid wikis={wikis.data} isLoading={wikis.isLoading} />
+              <WikiGrid wikis={wikiPages} isLoading={wikis.isLoading} />
               <ContentSplit subreddit={sub.data} />
             </div>
 
@@ -131,8 +143,11 @@ export function SubredditApp({ subreddit, onHandleSubmit }: SubredditAppProps) {
               subreddit={subreddit}
               window={postWindow}
               onWindowChange={setPostWindow}
-              posts={topPosts.data}
+              pages={topPosts.data}
               isLoading={topPosts.isLoading}
+              isFetchingMore={topPosts.isFetchingNextPage}
+              canLoadMore={topPosts.hasNextPage}
+              loadMore={topPosts.fetchNextPage}
               error={topPosts.error}
             />
           </>
@@ -543,18 +558,65 @@ function TopPosts({
   subreddit,
   window,
   onWindowChange,
-  posts,
+  pages,
   isLoading,
+  isFetchingMore,
+  canLoadMore,
+  loadMore,
   error,
 }: {
   subreddit: string;
   window: PostWindow;
   onWindowChange: (window: PostWindow) => void;
-  posts: ReturnType<typeof useSubredditTopPosts>["data"];
+  pages: ReturnType<typeof useSubredditTopPosts>["data"];
   isLoading: boolean;
+  isFetchingMore: boolean;
+  canLoadMore: boolean;
+  loadMore: () => Promise<unknown>;
   error: unknown;
 }) {
   const windowLabel = window === "All" ? "latest archive sample" : window === "Year" ? "past year" : "past month";
+  const [page, setPage] = useState(0);
+  const [pendingPage, setPendingPage] = useState<number | null>(null);
+  const loadedPages = pages?.pages.filter((loadedPage) => loadedPage.posts.length > 0) ?? [];
+  const loadedCount = loadedPages.reduce((total, loadedPage) => total + loadedPage.posts.length, 0);
+  const pageCount = Math.max(1, loadedPages.length);
+  const currentPage = Math.min(page, pageCount - 1);
+  const posts = loadedPages[currentPage]?.posts ?? [];
+  const atFirst = currentPage === 0;
+  const atLoadedEnd = currentPage >= pageCount - 1;
+  const atLast = atLoadedEnd && !canLoadMore;
+  const pageLabel = `Page ${currentPage + 1}`;
+  const pendingPageReady = pendingPage != null && Boolean(loadedPages[pendingPage]?.posts.length);
+
+  useEffect(() => {
+    setPage(0);
+    setPendingPage(null);
+  }, [window]);
+
+  useEffect(() => {
+    setPage((value) => Math.min(value, pageCount - 1));
+  }, [pageCount]);
+
+  useEffect(() => {
+    if (pendingPage == null || isFetchingMore) return;
+    if (pendingPage < pageCount && pendingPageReady) {
+      setPage(pendingPage);
+      setPendingPage(null);
+    } else if (!canLoadMore) {
+      setPendingPage(null);
+    }
+  }, [canLoadMore, isFetchingMore, pageCount, pendingPage, pendingPageReady]);
+
+  function handleOlder() {
+    if (!atLoadedEnd) {
+      setPage((value) => Math.min(pageCount - 1, value + 1));
+      return;
+    }
+    if (!canLoadMore || isFetchingMore) return;
+    setPendingPage(currentPage + 1);
+    void loadMore().catch(() => setPendingPage(null));
+  }
 
   return (
     <div className="ks-card">
@@ -562,41 +624,76 @@ function TopPosts({
         <span className="ks-label">Top posts</span>
         <div className="flex flex-wrap items-center gap-[7px]">
           <Segmented options={postWindows} value={window} onChange={onWindowChange} />
-          <span className="font-mono text-xs text-dim">rank=score · {windowLabel}</span>
+          <span className="font-mono text-xs text-dim">score-sorted sample · {windowLabel}</span>
         </div>
       </div>
       <div className="ks-endpoint">/api/posts/search · subreddit={subreddit}</div>
       {isLoading || error ? (
-        <RowsSkeleton rows={6} />
-      ) : posts?.length ? (
-        <div className="mt-2 flex flex-col">
-          {posts.map((post) => (
-            <a
-              key={post.id}
-              href={post.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3.5 border-t border-border-soft py-[13px] text-inherit no-underline hover:bg-white/[0.018]"
-            >
-              <span className="w-[22px] flex-none text-right font-mono text-[13px] text-faint">{post.rank}</span>
-              <div className="flex w-[54px] flex-none flex-col items-center">
-                <svg width="11" height="11" viewBox="0 0 12 12">
-                  <polygon points="6,1 11,8 1,8" fill="var(--accent)" />
-                </svg>
-                <span className="font-mono text-[15px] font-semibold text-accent">{compact(post.score)}</span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="line-clamp-1 text-[14px] leading-snug text-soft">{post.title}</div>
-                <div className="mt-1 font-mono text-xs text-subtle">
-                  u/{post.author} · {num(post.comments)} comments · {relTime(post.created_utc)}
+        <RowsSkeleton rows={5} />
+      ) : posts.length ? (
+        <>
+          <div className="mt-2 flex flex-col">
+            {posts.map((post) => (
+              <a
+                key={post.id}
+                href={post.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3.5 border-t border-border-soft py-[13px] text-inherit no-underline hover:bg-white/[0.018]"
+              >
+                <span className="w-[22px] flex-none text-right font-mono text-[13px] text-faint">{post.rank}</span>
+                <div className="flex w-[54px] flex-none flex-col items-center">
+                  <svg width="11" height="11" viewBox="0 0 12 12">
+                    <polygon points="6,1 11,8 1,8" fill="var(--accent)" />
+                  </svg>
+                  <span className="font-mono text-[15px] font-semibold text-accent">{compact(post.score)}</span>
                 </div>
-              </div>
-              <span className="max-w-[150px] flex-none truncate rounded-md bg-white/[0.05] px-2 py-[3px] text-[11px] font-medium text-muted">
-                {post.flair}
+                <div className="min-w-0 flex-1">
+                  <div className="line-clamp-1 text-[14px] leading-snug text-soft">{post.title}</div>
+                  <div className="mt-1 font-mono text-xs text-subtle">
+                    u/{post.author} · {num(post.comments)} comments · {relTime(post.created_utc)}
+                  </div>
+                </div>
+                <span className="max-w-[150px] flex-none truncate rounded-md bg-white/[0.05] px-2 py-[3px] text-[11px] font-medium text-muted">
+                  {post.flair}
+                </span>
+              </a>
+            ))}
+          </div>
+          <div className="mt-3.5 flex flex-wrap items-center justify-between gap-3.5 border-t border-border-soft pt-3.5">
+            <span className="font-mono text-xs text-subtle">
+              {loadedCount}
+              {canLoadMore ? "+" : ""} loaded · showing {posts[0]?.rank}-{posts[posts.length - 1]?.rank}
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setPage((value) => Math.max(0, value - 1))}
+                disabled={atFirst}
+                className="ks-glass-control flex cursor-pointer items-center gap-1.5 rounded-lg px-[11px] py-1.5 text-xs font-medium text-soft disabled:cursor-default disabled:text-faint"
+              >
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <polyline points="7.5,2 3.5,6 7.5,10" />
+                </svg>
+                Newer
+              </button>
+              <span className="flex min-w-[74px] items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 font-mono text-xs font-medium text-muted">
+                {pageLabel}
               </span>
-            </a>
-          ))}
-        </div>
+              <button
+                type="button"
+                onClick={handleOlder}
+                disabled={atLast || (atLoadedEnd && isFetchingMore)}
+                className="ks-glass-control flex cursor-pointer items-center gap-1.5 rounded-lg px-[11px] py-1.5 text-xs font-medium text-soft disabled:cursor-default disabled:text-faint"
+              >
+                {atLoadedEnd && isFetchingMore ? "Loading older" : "Older"}
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <polyline points="4.5,2 8.5,6 4.5,10" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </>
       ) : (
         <Empty label="No posts found" />
       )}

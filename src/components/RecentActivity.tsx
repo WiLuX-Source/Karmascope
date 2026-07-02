@@ -1,48 +1,82 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { num, relTime } from "../lib/format";
 import { Empty, ErrorNote } from "./State";
 import { RecentSkeleton } from "./Skeleton";
-import type { RecentItem, Sort } from "../hooks/useProfile";
+import { RECENT_PAGE_SIZE, type RecentFilter, type RecentItem, type Sort } from "../hooks/useProfile";
 
 interface Props {
   sort: Sort;
+  filter: RecentFilter;
+  onFilterChange: (filter: RecentFilter) => void;
   items: RecentItem[] | undefined;
   isLoading: boolean;
+  isFetchingMore: boolean;
+  canLoadMore: boolean;
+  loadMore: () => Promise<unknown>;
   error: unknown;
 }
 
-type RecentFilter = "All" | "Posts" | "Comments";
-
-const PAGE_SIZE = 6;
 const filters: RecentFilter[] = ["All", "Posts", "Comments"];
 
-export function RecentActivity({ sort, items, isLoading, error }: Props) {
+export function RecentActivity({
+  sort,
+  filter,
+  onFilterChange,
+  items,
+  isLoading,
+  isFetchingMore,
+  canLoadMore,
+  loadMore,
+  error,
+}: Props) {
   const rows = items ?? [];
-  const [filter, setFilter] = useState<RecentFilter>("All");
   const [page, setPage] = useState(0);
-  const filteredRows = useMemo(
-    () =>
-      rows.filter((row) => {
-        if (filter === "All") return true;
-        return row.kind === (filter === "Posts" ? "Post" : "Comment");
-      }),
-    [filter, rows],
-  );
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const [pendingPage, setPendingPage] = useState<number | null>(null);
+  const pageCount = Math.max(1, Math.ceil(rows.length / RECENT_PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
-  const visibleRows = filteredRows.slice(
-    currentPage * PAGE_SIZE,
-    currentPage * PAGE_SIZE + PAGE_SIZE,
+  const visibleRows = rows.slice(
+    currentPage * RECENT_PAGE_SIZE,
+    currentPage * RECENT_PAGE_SIZE + RECENT_PAGE_SIZE,
   );
-  const start = filteredRows.length === 0 ? 0 : currentPage * PAGE_SIZE + 1;
-  const end = Math.min(filteredRows.length, currentPage * PAGE_SIZE + PAGE_SIZE);
-  const rangeLabel = `${filteredRows.length} results · showing ${start}-${end}`;
+  const start = rows.length === 0 ? 0 : currentPage * RECENT_PAGE_SIZE + 1;
+  const end = Math.min(rows.length, currentPage * RECENT_PAGE_SIZE + RECENT_PAGE_SIZE);
+  const rangeLabel = `${rows.length}${canLoadMore ? "+" : ""} loaded · showing ${start}-${end}`;
   const atFirst = currentPage === 0;
-  const atLast = currentPage >= pageCount - 1;
+  const atLoadedEnd = currentPage >= pageCount - 1;
+  const atLast = atLoadedEnd && !canLoadMore;
+  const backLabel = sort === "Newest" ? "Newer" : "Older";
+  const forwardLabel = sort === "Newest" ? "Older" : "Newer";
+  const loadingLabel = sort === "Newest" ? "Loading older" : "Loading newer";
+  const pageLabel = `Page ${currentPage + 1}`;
 
   useEffect(() => {
     setPage(0);
-  }, [filter, sort, items]);
+    setPendingPage(null);
+  }, [filter, sort]);
+
+  useEffect(() => {
+    setPage((value) => Math.min(value, pageCount - 1));
+  }, [pageCount]);
+
+  useEffect(() => {
+    if (pendingPage == null || isFetchingMore) return;
+    if (pendingPage < pageCount) {
+      setPage(pendingPage);
+      setPendingPage(null);
+    } else if (!canLoadMore) {
+      setPendingPage(null);
+    }
+  }, [canLoadMore, isFetchingMore, pageCount, pendingPage]);
+
+  function handleNext() {
+    if (!atLoadedEnd) {
+      setPage((value) => Math.min(pageCount - 1, value + 1));
+      return;
+    }
+    if (!canLoadMore || isFetchingMore) return;
+    setPendingPage(currentPage + 1);
+    void loadMore().catch(() => setPendingPage(null));
+  }
 
   return (
     <div className="ks-card">
@@ -56,7 +90,7 @@ export function RecentActivity({ sort, items, isLoading, error }: Props) {
                 <button
                   key={option}
                   type="button"
-                  onClick={() => setFilter(option)}
+                  onClick={() => onFilterChange(option)}
                   className={`cursor-pointer rounded-[7px] border-0 px-3 py-[5px] text-xs font-medium ${
                     active ? "bg-accent-soft text-accent" : "bg-transparent text-muted-3"
                   }`}
@@ -77,7 +111,7 @@ export function RecentActivity({ sort, items, isLoading, error }: Props) {
         <RecentSkeleton />
       ) : error ? (
         <ErrorNote error={error} />
-      ) : filteredRows.length === 0 ? (
+      ) : rows.length === 0 ? (
         <Empty label="No recent activity" />
       ) : (
         <>
@@ -127,29 +161,18 @@ export function RecentActivity({ sort, items, isLoading, error }: Props) {
                 <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <polyline points="7.5,2 3.5,6 7.5,10" />
                 </svg>
-                Prev
+                {backLabel}
               </button>
-              {Array.from({ length: pageCount }, (_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setPage(i)}
-                  className={`min-w-[30px] cursor-pointer rounded-lg border px-0 py-1.5 font-mono text-xs font-medium ${
-                    i === currentPage
-                      ? "border-accent bg-accent text-white"
-                      : "border-white/10 bg-white/[0.04] text-muted"
-                  }`}
-                >
-                  {i + 1}
-                </button>
-              ))}
+              <span className="flex min-w-[74px] items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 font-mono text-xs font-medium text-muted">
+                {pageLabel}
+              </span>
               <button
                 type="button"
-                onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}
-                disabled={atLast}
+                onClick={handleNext}
+                disabled={atLast || (atLoadedEnd && isFetchingMore)}
                 className="ks-glass-control flex cursor-pointer items-center gap-1.5 rounded-lg px-[11px] py-1.5 text-xs font-medium text-soft disabled:cursor-default disabled:text-faint"
               >
-                Next
+                {atLoadedEnd && isFetchingMore ? loadingLabel : forwardLabel}
                 <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <polyline points="4.5,2 8.5,6 4.5,10" />
                 </svg>
