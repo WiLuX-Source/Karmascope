@@ -21,6 +21,7 @@ import {
   useInteractions,
   useFlairs,
   useRecent,
+  type RecentFilter,
 } from "./hooks/useProfile";
 
 interface AppProps {
@@ -35,8 +36,9 @@ export function App({ username, onHandleSubmit }: AppProps) {
     range: "12M",
     metric: "Both",
     sort: "Newest",
-    showInteractions: true,
+    showInteractions: false,
   });
+  const [recentFilter, setRecentFilter] = useState<RecentFilter>("All");
   const user = useUser(username);
   const meta = user.data?._meta;
   const earliest = meta ? Math.min(meta.earliest_post_at, meta.earliest_comment_at) : undefined;
@@ -45,7 +47,7 @@ export function App({ username, onHandleSubmit }: AppProps) {
   const subs = useSubreddits(username);
   const interactions = useInteractions(username, controls.showInteractions);
   const flairs = useFlairs(username);
-  const recent = useRecent(username, controls.sort);
+  const recent = useRecent(username, controls.sort, recentFilter);
 
   const communities = subs.data?.length;
   const subRows = (subs.data ?? []).slice(0, 8).map((s) => ({
@@ -63,7 +65,11 @@ export function App({ username, onHandleSubmit }: AppProps) {
     hasUsername && (user.isFetching || activity.isFetching || subs.isFetching || recent.isFetching);
 
   function handleRescan() {
-    qc.invalidateQueries();
+    if (!hasUsername) return;
+    void qc.resetQueries({ queryKey: ["recent-kind", username] });
+    void qc.invalidateQueries({
+      predicate: (query) => query.queryKey[0] !== "recent-kind" && query.queryKey[1] === username,
+    });
   }
 
   return (
@@ -149,8 +155,13 @@ export function App({ username, onHandleSubmit }: AppProps) {
 
             <RecentActivity
               sort={controls.sort}
+              filter={recentFilter}
+              onFilterChange={setRecentFilter}
               items={recent.data}
               isLoading={recent.isLoading}
+              isFetchingMore={recent.isFetchingNextPage}
+              canLoadMore={recent.hasNextPage}
+              loadMore={recent.fetchNextPage}
               error={recent.error}
             />
           </>
